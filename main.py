@@ -21,6 +21,8 @@ from telegram.ext import Updater, CommandHandler
 from rolling import Roll
 from db import DB
 from collections import defaultdict
+from functools import partial
+
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -32,11 +34,7 @@ def escape_markdown(string):
     return string.replace('+', '\\+').replace('-', '\\-').replace('(', '\\(').replace(')', '\\)')
 
 
-def roll_handler(update, context, rollstring=None):
-    """Echo the user message."""
-    rollstring = rollstring or " ".join(context.args)
-
-    user_data = DB(user_id=str(update.message.from_user.id))
+def determine_roll(rollstring, user_data):
     saved_rolls = user_data.get_saved_rolls()
 
     saved_roll = None
@@ -44,7 +42,66 @@ def roll_handler(update, context, rollstring=None):
         if saved_roll_name.lower() in rollstring.lower():
             saved_roll = Roll.from_rollstring(saved_roll_value)
 
-    roll = saved_roll or Roll.from_rollstring(rollstring)
+    return saved_roll or Roll.from_rollstring(rollstring)
+
+def get_winning_and_loosing_roll(rollstring, user_data):
+    roll_1 = determine_roll(rollstring, user_data)
+    roll_2 = determine_roll(rollstring, user_data)
+
+    if roll_1.result > roll_2.result:
+        winning_roll = roll_1
+        loosing_roll = roll_2
+    else:
+        winning_roll = roll_2
+        loosing_roll = roll_1
+
+    return winning_roll, loosing_roll
+
+
+def get_username(update):
+    return f'*{update.message.from_user.first_name}*' if update.message.from_user.first_name else f'@{update.message.from_user.username}'
+
+
+def disadvantage_handler(update, context, rollstring=None):
+    rollstring = rollstring or " ".join(context.args)
+    user_data = DB(user_id=str(update.message.from_user.id))
+
+    winning_roll, loosing_roll = get_winning_and_loosing_roll(rollstring, user_data)
+
+    username = get_username(update)
+
+    update.message.reply_markdown_v2(
+        escape_markdown(
+            f"{username} rolled *{loosing_roll.result}*  \n"
+            f"`Rolled with disadvantage:`  \n"
+            f"`> {(loosing_roll.as_detailed())} = {loosing_roll.result}`\n"
+            f"`{(winning_roll.as_detailed())} = {winning_roll.result}`")
+    )
+
+
+def advantage_handler(update, context, rollstring=None):
+    rollstring = rollstring or " ".join(context.args)
+    user_data = DB(user_id=str(update.message.from_user.id))
+
+    winning_roll, loosing_roll = get_winning_and_loosing_roll(rollstring, user_data)
+
+    username = get_username(update)
+
+    update.message.reply_markdown_v2(
+        escape_markdown(
+            f"{username} rolled *{winning_roll.result}*  \n"
+            f"`Rolled with advantage:`  \n"
+            f"`> {(winning_roll.as_detailed())} = {winning_roll.result}`\n"
+            f"`{(loosing_roll.as_detailed())} = {loosing_roll.result}`")
+    )
+
+
+def roll_handler(update, context, rollstring=None):
+    """Echo the user message."""
+    rollstring = rollstring or " ".join(context.args)
+    user_data = DB(user_id=str(update.message.from_user.id))
+
+    roll = determine_roll(rollstring, user_data)
 
     username = f'*{update.message.from_user.first_name}*' if update.message.from_user.first_name else f'@{update.message.from_user.username}'
     update.message.reply_markdown_v2(
@@ -102,6 +159,8 @@ def main():
     # on different commands - answer in Telegram
     dp.add_handler(CommandHandler(["roll", 'r'], roll_handler))
     dp.add_handler(CommandHandler(["reroll", 'rr'], reroll_handler))
+    dp.add_handler(CommandHandler(["roll_advantage", 'ra'], advantage_handler))
+    dp.add_handler(CommandHandler(["roll_disadvantage", 'rd'], disadvantage_handler))
     dp.add_handler(CommandHandler("save", save_roll_handler))
 
     # on noncommand i.e message - echo the message on Telegram
