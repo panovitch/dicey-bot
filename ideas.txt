@@ -2,3 +2,4 @@
 2. save rolls by name
 3. advantage/disadvantage
 4. rule lookup
+5. initiative
