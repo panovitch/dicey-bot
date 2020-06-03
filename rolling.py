@@ -33,7 +33,7 @@ class Roll:
             return self.calculate()
 
     def calculate(self):
-        self.rolls = [randrange(1, self.dice_value) for _ in range(self.dice_number)]
+        self.rolls = [randrange(1, self.dice_value + 1) for _ in range(self.dice_number)]
         self._result = sum(self.rolls) + self.flat_bonus
         return self._result
 
